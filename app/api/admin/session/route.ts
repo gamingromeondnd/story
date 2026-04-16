@@ -3,24 +3,37 @@ import { NextResponse } from "next/server";
 import {
     ADMIN_SESSION_COOKIE,
     createAdminSessionValue,
+    getAdminAuthConfigError,
     getAdminSessionMaxAge,
     verifyAdminPassword,
     verifyAdminSessionValue,
 } from "@/src/lib/adminSession";
 
 export async function GET() {
+    const configError = getAdminAuthConfigError();
     const cookieStore = await cookies();
     const sessionValue = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
-    const authenticated = verifyAdminSessionValue(sessionValue);
+    const authenticated = !configError && verifyAdminSessionValue(sessionValue);
 
-    return NextResponse.json({ authenticated });
+    return NextResponse.json({
+        authenticated,
+        configured: !configError,
+        error: configError,
+    });
 }
 
 export async function POST(request: Request) {
+    const configError = getAdminAuthConfigError();
+
+    if (configError) {
+        return NextResponse.json({ error: configError }, { status: 503 });
+    }
+
     const body = (await request.json().catch(() => null)) as { password?: string } | null;
     const password = body?.password?.trim() ?? "";
 
     if (!verifyAdminPassword(password)) {
+        await new Promise((resolve) => setTimeout(resolve, 350));
         return NextResponse.json({ error: "Invalid admin password." }, { status: 401 });
     }
 
@@ -28,7 +41,7 @@ export async function POST(request: Request) {
 
     cookieStore.set(ADMIN_SESSION_COOKIE, createAdminSessionValue(), {
         httpOnly: true,
-        sameSite: "lax",
+        sameSite: "strict",
         secure: process.env.NODE_ENV === "production",
         path: "/",
         maxAge: getAdminSessionMaxAge(),

@@ -2,6 +2,8 @@
 
 Story is a Next.js 16 app deployed with Vercel and backed by Supabase for auth, realtime profile updates, content storage metadata, and admin lock/unlock controls with 30-day unlock windows.
 
+Admin operations are now server-verified. The browser no longer writes admin changes directly to Supabase.
+
 ## Local Development
 
 1. Install dependencies:
@@ -16,13 +18,19 @@ npm install
 cp .env.example .env.local
 ```
 
-3. Start the dev server:
+3. Generate a hashed admin password and place it in `.env.local`:
+
+```bash
+node scripts/generate-admin-password-hash.mjs "your-strong-password"
+```
+
+4. Start the dev server:
 
 ```bash
 npm run dev
 ```
 
-4. Open [http://localhost:3000](http://localhost:3000).
+5. Open [http://localhost:3000](http://localhost:3000).
 
 ## Vercel Deployment
 
@@ -36,7 +44,8 @@ This repo is ready for Vercel's default Next.js deployment flow.
    - `public.profiles`
    - `public.content`
    - `public.settings`
-4. Make sure your PayPal plan IDs and client ID are available.
+4. Copy your Supabase service role key for secure admin APIs.
+5. Make sure your PayPal plan IDs and client ID are available.
 
 ### Environment variables to add in Vercel
 
@@ -45,8 +54,9 @@ Add these in `Project Settings -> Environment Variables`:
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY=
-ADMIN_PASSWORD=
+ADMIN_PASSWORD_HASH=
 ADMIN_SESSION_SECRET=
+SUPABASE_SERVICE_ROLE_KEY=
 NEXT_PUBLIC_PAYPAL_CLIENT_ID=
 NEXT_PUBLIC_PAYPAL_PLAN_BASIC=
 NEXT_PUBLIC_PAYPAL_PLAN_PREMIUM=
@@ -89,6 +99,7 @@ npm run start
 
 - The app uses `proxy.ts` for Supabase session refresh in Next.js 16.
 - Email and password authentication is handled by Supabase Auth (`auth.users`). Passwords are stored as hashes by Supabase, not in `public` tables.
-- Admin access uses a server-validated password (`/api/admin/session`) and httpOnly session cookie.
+- Admin access uses a server-validated password hash (`/api/admin/session`) and httpOnly session cookie.
+- Admin data reads and mutations use server routes plus `SUPABASE_SERVICE_ROLE_KEY`; rerun `supabase/schema.sql` so broad browser write access is removed.
 - Audio playback for users is enforced from the Settings dashboard plan/lock state.
 - If you change environment variables in Vercel, redeploy the project so the new values apply.

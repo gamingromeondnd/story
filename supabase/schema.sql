@@ -2,10 +2,9 @@
 -- Run this in the Supabase SQL editor after creating the project.
 --
 -- Important:
--- The current app keeps admin access entirely in the browser via a shared password.
--- To preserve that behavior, the policies below allow broad client access.
--- This mirrors the existing trust model but is NOT secure for production.
--- For a hardened setup, move admin mutations to server routes with the service role key.
+-- Admin reads and mutations are expected to run through server routes using
+-- SUPABASE_SERVICE_ROLE_KEY. Browser clients should only read public content/settings
+-- and access their own profile row.
 
 create extension if not exists "pgcrypto";
 
@@ -13,7 +12,7 @@ create table if not exists public.profiles (
     id uuid primary key references auth.users (id) on delete cascade,
     email text not null default '',
     plan_type text not null default 'guest',
-    access_locked boolean not null default false,
+    access_locked boolean not null default true,
     access_expires_at timestamptz,
     background_play_enabled boolean not null default false,
     screen_off_playback_enabled boolean not null default false,
@@ -23,16 +22,17 @@ create table if not exists public.profiles (
 );
 
 alter table public.profiles
-add column if not exists access_locked boolean not null default false;
+add column if not exists access_locked boolean not null default true;
+
+alter table public.profiles
+alter column access_locked set default true;
 
 alter table public.profiles
 add column if not exists access_expires_at timestamptz;
 
--- Optional backfill for existing unlocked users that predate expiry tracking.
-update public.profiles
-set access_expires_at = timezone('utc', now()) + interval '30 days'
-where access_locked = false
-  and access_expires_at is null;
+-- Missing expiry now means "locked until admin unlocks".
+-- If you need to preserve older unlocked users after introducing expiry tracking,
+-- backfill `access_expires_at` manually before relying on the app logic.
 
 -- To use realtime lock/unlock updates in the app, enable realtime for:
 -- public.profiles
@@ -112,17 +112,28 @@ alter table public.content enable row level security;
 alter table public.settings enable row level security;
 
 drop policy if exists "profiles_public_read" on public.profiles;
-create policy "profiles_public_read"
+drop policy if exists "profiles_public_write" on public.profiles;
+drop policy if exists "profiles_self_read" on public.profiles;
+drop policy if exists "profiles_self_insert" on public.profiles;
+drop policy if exists "profiles_self_update" on public.profiles;
+create policy "profiles_self_read"
 on public.profiles
 for select
-using (true);
+to authenticated
+using (auth.uid() = id);
 
-drop policy if exists "profiles_public_write" on public.profiles;
-create policy "profiles_public_write"
+create policy "profiles_self_insert"
 on public.profiles
-for all
-using (true)
-with check (true);
+for insert
+to authenticated
+with check (auth.uid() = id);
+
+create policy "profiles_self_update"
+on public.profiles
+for update
+to authenticated
+using (auth.uid() = id)
+with check (auth.uid() = id);
 
 drop policy if exists "content_public_read" on public.content;
 create policy "content_public_read"
@@ -131,11 +142,6 @@ for select
 using (true);
 
 drop policy if exists "content_public_write" on public.content;
-create policy "content_public_write"
-on public.content
-for all
-using (true)
-with check (true);
 
 drop policy if exists "settings_public_read" on public.settings;
 create policy "settings_public_read"
@@ -144,8 +150,3 @@ for select
 using (true);
 
 drop policy if exists "settings_public_write" on public.settings;
-create policy "settings_public_write"
-on public.settings
-for all
-using (true)
-with check (true);

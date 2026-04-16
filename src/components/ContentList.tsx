@@ -1,27 +1,18 @@
 "use client";
 
 import Image from "next/image";
-import { FaLock } from "react-icons/fa";
-import { getRequiredPlanForTopic, subscriptionPlans, type PlanType } from "@/src/lib/subscriptionPlans";
+import { FaLock, FaLockOpen } from "react-icons/fa";
 import type { ContentItem } from "@/src/types/platform";
 
 interface ContentListProps {
     items: ContentItem[];
-    currentPlan: PlanType;
-    backgroundPlayEnabled: boolean;
-    screenOffPlaybackEnabled: boolean;
-    allTopicsUnlocked: boolean;
-    allowedTopics: string[];
+    canAccessContent: boolean;
     emptyMessage?: string;
 }
 
 export default function ContentList({
     items,
-    currentPlan,
-    backgroundPlayEnabled,
-    screenOffPlaybackEnabled,
-    allTopicsUnlocked,
-    allowedTopics,
+    canAccessContent,
     emptyMessage = "No content available yet.",
 }: ContentListProps) {
     if (items.length === 0) {
@@ -35,10 +26,6 @@ export default function ContentList({
     return (
         <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
             {items.map((item) => {
-                const topicUnlocked =
-                    allTopicsUnlocked || allowedTopics.some((topic) => topic.toLowerCase() === item.topicName.toLowerCase());
-                const requiredPlan = getRequiredPlanForTopic(item.topicName);
-
                 return (
                     <article
                         key={item.id}
@@ -53,7 +40,16 @@ export default function ContentList({
                                 src={item.imageUrl}
                                 unoptimized
                             />
-                            {!topicUnlocked ? (
+                            <div
+                                className={`absolute right-3 top-3 z-10 flex h-10 w-10 items-center justify-center rounded-full border shadow-lg shadow-black/30 backdrop-blur-sm ${
+                                    canAccessContent
+                                        ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-100"
+                                        : "border-red-500/40 bg-slate-950/75 text-red-100"
+                                }`}
+                            >
+                                {canAccessContent ? <FaLockOpen size={14} /> : <FaLock size={14} />}
+                            </div>
+                            {!canAccessContent ? (
                                 <div className="absolute inset-0 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm">
                                     <span className="status-pill border-red-500/40 bg-red-500/10 text-red-100">
                                         <FaLock className="mr-2" />
@@ -65,37 +61,15 @@ export default function ContentList({
 
                         <div className="space-y-4 p-5">
                             <div>
-                                <p className="text-xs uppercase tracking-[0.3em] text-emerald-300">
-                                    {item.topicName || "Untitled Topic"}
-                                </p>
                                 <h3 className="text-xl font-semibold text-white">{item.title}</h3>
-                                <p className="mt-2 text-sm leading-6 text-slate-400">
-                                    {topicUnlocked
-                                        ? `${subscriptionPlans[currentPlan].name} plan active for this audio.`
-                                        : `${subscriptionPlans[requiredPlan].name} or higher required.`}
-                                </p>
                             </div>
 
-                            {topicUnlocked ? (
+                            {canAccessContent ? (
                                 <div className="space-y-3">
+                                    <p className="text-sm text-emerald-200">Unlocked. Audio is ready to play.</p>
                                     <audio controls preload="none" src={item.audioUrl}>
                                         Your browser does not support the audio element.
                                     </audio>
-                                    <div className="flex flex-wrap gap-2 text-xs text-slate-300">
-                                        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
-                                            Plan: {subscriptionPlans[currentPlan].name}
-                                        </span>
-                                        {backgroundPlayEnabled ? (
-                                            <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-emerald-100">
-                                                Background Audio
-                                            </span>
-                                        ) : null}
-                                        {screenOffPlaybackEnabled ? (
-                                            <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-1 text-sky-100">
-                                                Screen-Off Style Playback
-                                            </span>
-                                        ) : null}
-                                    </div>
                                 </div>
                             ) : (
                                 <button
@@ -103,7 +77,7 @@ export default function ContentList({
                                     disabled
                                     type="button"
                                 >
-                                    Locked for {subscriptionPlans[requiredPlan].name}
+                                    Locked
                                 </button>
                             )}
                         </div>

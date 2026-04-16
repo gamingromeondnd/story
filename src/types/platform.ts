@@ -11,6 +11,8 @@ export interface PlatformUser {
     allTopicsUnlocked: boolean;
 }
 
+export type UserProfile = PlatformUser;
+
 export interface ContentItem {
     id: string;
     topicName: string;

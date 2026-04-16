@@ -5,10 +5,8 @@ import { useEffect, useState } from "react";
 import { FaHeadphones, FaShieldAlt } from "react-icons/fa";
 import ContentList from "@/src/components/ContentList";
 import PaymentInfo from "@/src/components/PaymentInfo";
-import SubscriptionPlansOverview from "@/src/components/SubscriptionPlansOverview";
 import { useAuth } from "@/src/contexts/AuthContext";
 import { GUEST_SESSION_KEY } from "@/src/lib/appConstants";
-import { getAllowedTopicsForPlan, getResolvedFeatures, subscriptionPlans } from "@/src/lib/subscriptionPlans";
 import { fetchContent, fetchPayPalEmail } from "@/src/lib/supabaseData";
 import type { ContentItem } from "@/src/types/platform";
 
@@ -67,15 +65,8 @@ export default function UserDashboard() {
     const accessExpiryMs = profile?.accessExpiresAt ? Date.parse(profile.accessExpiresAt) : Number.NaN;
     const hasAccessExpiry = Number.isFinite(accessExpiryMs);
     const isAccessExpired = hasAccessExpiry ? accessExpiryMs <= currentTimeMs : false;
-    const assignedPlan = user ? profile?.planType ?? "guest" : "guest";
     const isAccessLocked = Boolean(user && (profile?.accessLocked || isAccessExpired));
-    const currentPlan = isAccessLocked ? "guest" : assignedPlan;
-    const resolvedFeatures = getResolvedFeatures(currentPlan, {
-        backgroundPlayEnabled: profile?.backgroundPlayEnabled,
-        screenOffPlaybackEnabled: profile?.screenOffPlaybackEnabled,
-        allTopicsUnlocked: profile?.allTopicsUnlocked,
-    });
-    const allowedTopics = getAllowedTopicsForPlan(currentPlan);
+    const hasUnlockedAccess = Boolean(user && !isAccessLocked);
     const displayEmail = user ? profile?.email || user.email || "Signed in user" : "Guest Listener";
     const accessExpiryLabel = hasAccessExpiry ? new Date(accessExpiryMs).toLocaleString() : "";
     const accessDaysLeft = hasAccessExpiry ? Math.max(0, Math.ceil((accessExpiryMs - currentTimeMs) / 86400000)) : null;
@@ -117,16 +108,16 @@ export default function UserDashboard() {
                             className={`status-pill ${
                                 isAccessLocked
                                     ? "border-red-500/40 bg-red-500/10 text-red-100"
-                                    : currentPlan !== "guest"
+                                    : hasUnlockedAccess
                                     ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
                                     : "border-amber-500/40 bg-amber-500/10 text-amber-100"
                             }`}
                         >
                             {isAccessLocked
                                 ? "Access Locked"
-                                : currentPlan !== "guest"
-                                ? `${subscriptionPlans[currentPlan].name} Active`
-                                : "Guest Plan"}
+                                : hasUnlockedAccess
+                                ? "Access Active"
+                                : "Guest Access"}
                         </span>
                         <Link className="secondary-button w-full sm:w-auto" href="/admin">
                             <FaShieldAlt />
@@ -150,9 +141,7 @@ export default function UserDashboard() {
             </section>
 
             <div className="mt-8 space-y-6">
-                <PaymentInfo currentPlan={currentPlan} paypalEmail={paypalEmail} />
-
-                <SubscriptionPlansOverview currentPlan={currentPlan} enabledFeatures={resolvedFeatures} />
+                <PaymentInfo isUnlocked={hasUnlockedAccess} paypalEmail={paypalEmail} />
 
                 <section className="glass-panel p-6 sm:p-8">
                     <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -164,13 +153,9 @@ export default function UserDashboard() {
                     </div>
 
                     <ContentList
-                        allTopicsUnlocked={resolvedFeatures.allTopicsUnlocked}
-                        allowedTopics={allowedTopics}
-                        backgroundPlayEnabled={resolvedFeatures.backgroundPlayEnabled}
-                        currentPlan={currentPlan}
+                        canAccessContent={hasUnlockedAccess}
                         emptyMessage="No content has been published yet. Ask the admin to add audio."
                         items={content}
-                        screenOffPlaybackEnabled={resolvedFeatures.screenOffPlaybackEnabled}
                     />
                 </section>
             </div>

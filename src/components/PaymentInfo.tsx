@@ -1,16 +1,13 @@
 "use client";
 
 import { FaCheckCircle, FaLock, FaPaypal } from "react-icons/fa";
-import { subscriptionPlans, type PlanType } from "@/src/lib/subscriptionPlans";
 
 interface PaymentInfoProps {
     paypalEmail: string;
-    currentPlan: PlanType;
+    isUnlocked: boolean;
 }
 
-export default function PaymentInfo({ paypalEmail, currentPlan }: PaymentInfoProps) {
-    const isUnlocked = currentPlan !== "guest";
-
+export default function PaymentInfo({ paypalEmail, isUnlocked }: PaymentInfoProps) {
     return (
         <section className="glass-panel p-6 sm:p-8">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -41,9 +38,6 @@ export default function PaymentInfo({ paypalEmail, currentPlan }: PaymentInfoPro
                             {paypalEmail || "Admin has not added a PayPal email yet."}
                         </p>
                         <p className="mt-1 text-sm font-medium text-sky-200">Pay with PayPal</p>
-                        <p className="mt-2 text-sm text-slate-400">
-                            Current plan: {subscriptionPlans[currentPlan].name} ({subscriptionPlans[currentPlan].price})
-                        </p>
                     </div>
                 </div>
 
@@ -58,7 +52,7 @@ export default function PaymentInfo({ paypalEmail, currentPlan }: PaymentInfoPro
                     </div>
                     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                         <p className="font-semibold text-white">3. Unlock</p>
-                        <p className="mt-2 text-slate-400">Your plan updates automatically after assignment.</p>
+                        <p className="mt-2 text-slate-400">Your access updates automatically after admin approval.</p>
                     </div>
                 </div>
             </div>

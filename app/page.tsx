@@ -1,13 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
 import HomeContentGrid from "@/src/components/HomeContentGrid";
-import HomeTopicCategoryPicker from "@/src/components/HomeTopicCategoryPicker";
 
 export default function Home() {
-  const [query, setQuery] = useState("");
-
   return (
     <main className="mx-auto min-h-screen w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
       <div className="mb-6 flex items-center justify-between gap-3">
@@ -19,12 +15,7 @@ export default function Home() {
           Settings
         </Link>
       </div>
-      <HomeTopicCategoryPicker
-        onQueryChange={setQuery}
-        onTopicSelect={setQuery}
-        query={query}
-      />
-      <HomeContentGrid searchTerm={query} />
+      <HomeContentGrid />
     </main>
   );
 }

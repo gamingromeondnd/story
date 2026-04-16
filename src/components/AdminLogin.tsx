@@ -1,16 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FaShieldAlt } from "react-icons/fa";
 
 interface AdminLoginProps {
     onSuccess: () => void;
+    initialError?: string;
 }
 
-export default function AdminLogin({ onSuccess }: AdminLoginProps) {
+export default function AdminLogin({ onSuccess, initialError = "" }: AdminLoginProps) {
     const [password, setPassword] = useState("");
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        setError(initialError);
+    }, [initialError]);
 
     const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault();
@@ -27,7 +32,8 @@ export default function AdminLogin({ onSuccess }: AdminLoginProps) {
             });
 
             if (!response.ok) {
-                setError("Incorrect admin password.");
+                const data = (await response.json().catch(() => null)) as { error?: string } | null;
+                setError(data?.error ?? "Incorrect admin password.");
                 return;
             }
 

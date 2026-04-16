@@ -1,13 +1,12 @@
 "use client";
 
 import { ACCESS_UNLOCK_DAYS } from "@/src/lib/appConstants";
-import { subscriptionPlans, type FeatureKey, type PlanType } from "@/src/lib/subscriptionPlans";
+import { type FeatureKey } from "@/src/lib/subscriptionPlans";
 import type { PlatformUser } from "@/src/types/platform";
 
 interface UserListProps {
     users: PlatformUser[];
     onAccessToggle: (userId: string, currentValue: boolean) => Promise<void>;
-    onPlanChange: (userId: string, planType: PlanType) => Promise<void>;
     onFeatureToggle: (userId: string, featureKey: FeatureKey, currentValue: boolean) => Promise<void>;
 }
 
@@ -39,13 +38,13 @@ function getAccessExpiryMeta(accessExpiresAt: string | null) {
     };
 }
 
-export default function UserList({ users, onAccessToggle, onPlanChange, onFeatureToggle }: UserListProps) {
+export default function UserList({ users, onAccessToggle, onFeatureToggle }: UserListProps) {
     return (
         <section className="glass-panel p-6 sm:p-8">
             <div className="mb-6">
                 <p className="text-sm uppercase tracking-[0.3em] text-amber-300">User List</p>
                 <h2 className="mt-2 text-2xl font-semibold text-white">Email lock and unlock control</h2>
-                <p className="mt-2 text-sm text-slate-400">Lock/unlock users and update plan/features.</p>
+                <p className="mt-2 text-sm text-slate-400">Lock or unlock users from this email list.</p>
             </div>
 
             <div className="space-y-4">
@@ -63,12 +62,6 @@ export default function UserList({ users, onAccessToggle, onPlanChange, onFeatur
                                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                         <div>
                                             <p className="break-all text-base font-semibold text-white">{user.email}</p>
-                                            <p className="mt-2 text-sm text-slate-400">
-                                                Current plan:{" "}
-                                                <span className="text-emerald-300">
-                                                    {subscriptionPlans[user.planType].name} ({subscriptionPlans[user.planType].price})
-                                                </span>
-                                            </p>
                                             <p className="mt-2 text-xs text-slate-400">
                                                 {user.accessLocked
                                                     ? accessExpiry.hasExpiry
@@ -106,30 +99,11 @@ export default function UserList({ users, onAccessToggle, onPlanChange, onFeatur
 
                                     <p className="text-sm text-slate-400">
                                         {user.accessLocked
-                                            ? `User is locked. Unlock to activate assigned plan and features for ${ACCESS_UNLOCK_DAYS} days.`
+                                            ? `User is locked. Unlock to activate audio access for ${ACCESS_UNLOCK_DAYS} days.`
                                             : accessExpiry.expired
                                               ? "Access expired. Unlock to start a new cycle."
-                                              : "User is unlocked. Plan and features can be updated below."}
+                                              : "User is unlocked. Audio access is active."}
                                     </p>
-
-                                    <div>
-                                        <label className="mb-2 block text-sm text-slate-300" htmlFor={`plan-${user.id}`}>
-                                            Select Plan
-                                        </label>
-                                        <select
-                                            id={`plan-${user.id}`}
-                                            className="field"
-                                            disabled={user.accessLocked}
-                                            onChange={(event) => void onPlanChange(user.id, event.target.value as PlanType)}
-                                            value={user.planType}
-                                        >
-                                            {Object.entries(subscriptionPlans).map(([planKey, plan]) => (
-                                                <option key={planKey} value={planKey}>
-                                                    {plan.name} - {plan.price}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
 
                                     <div className="grid gap-3 sm:grid-cols-3">
                                         {(Object.keys(featureLabels) as FeatureKey[]).map((featureKey) => (

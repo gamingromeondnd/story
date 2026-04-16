@@ -2,30 +2,28 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { FaArrowLeft, FaLock, FaShieldAlt, FaTrash } from "react-icons/fa";
 import AddContent from "@/src/components/AddContent";
 import AdminLogin from "@/src/components/AdminLogin";
 import UserList from "@/src/components/UserList";
 import { ACCESS_UNLOCK_DAYS } from "@/src/lib/appConstants";
-import { type FeatureKey, type PlanType } from "@/src/lib/subscriptionPlans";
-import {
-    clearPayPalEmail,
-    createContent,
-    deleteContent,
-    fetchContent,
-    fetchPayPalEmail,
-    fetchUsers,
-    savePayPalEmail,
-    setUserAccessLocked,
-    subscribeToUsers,
-    toggleUserFeature,
-    updateUserPlan,
-} from "@/src/lib/supabaseData";
+import { type FeatureKey } from "@/src/lib/subscriptionPlans";
 import type { ContentItem, PlatformUser } from "@/src/types/platform";
 
 interface AdminDashboardProps {
     initialHasAccess?: boolean;
+}
+
+interface AdminBootstrapResponse {
+    users: PlatformUser[];
+    content: ContentItem[];
+    paypalEmail: string;
+}
+
+async function getResponseErrorMessage(response: Response, fallbackMessage: string) {
+    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+    return payload?.error ?? fallbackMessage;
 }
 
 export default function AdminDashboard({ initialHasAccess = false }: AdminDashboardProps) {
@@ -33,36 +31,45 @@ export default function AdminDashboard({ initialHasAccess = false }: AdminDashbo
     const [accessChecked, setAccessChecked] = useState(initialHasAccess);
     const [content, setContent] = useState<ContentItem[]>([]);
     const [users, setUsers] = useState<PlatformUser[]>([]);
+    const [adminAccessError, setAdminAccessError] = useState("");
     const [adminDataError, setAdminDataError] = useState("");
     const [paypalEmail, setPaypalEmail] = useState("");
     const [paypalDraft, setPaypalDraft] = useState("");
     const [settingsMessage, setSettingsMessage] = useState("");
     const [savingSettings, setSavingSettings] = useState(false);
 
-    const getAdminDataErrorMessage = (error: unknown) => {
-        if (!(error instanceof Error)) {
-            return "Could not load admin data from Supabase.";
+    const loadAdminData = useCallback(async () => {
+        try {
+            setAdminDataError("");
+
+            const response = await fetch("/api/admin/bootstrap", {
+                method: "GET",
+                cache: "no-store",
+            });
+
+            if (!response.ok) {
+                const message = await getResponseErrorMessage(response, "Could not load admin data.");
+
+                if (response.status === 401) {
+                    setAdminAccessError(message);
+                    setHasAccess(false);
+                    return;
+                }
+
+                setAdminDataError(message);
+                return;
+            }
+
+            const data = (await response.json()) as AdminBootstrapResponse;
+            setUsers(data.users);
+            setContent(data.content);
+            setPaypalEmail(data.paypalEmail);
+            setPaypalDraft(data.paypalEmail);
+        } catch (error) {
+            console.error("Error loading admin data:", error);
+            setAdminDataError("Could not load admin data.");
         }
-
-        const code = "code" in error ? String(error.code) : "";
-        const message = error.message;
-
-        if (code === "PGRST205") {
-            if (message.includes("public.profiles")) {
-                return "Supabase table `public.profiles` is missing. Run `supabase/schema.sql` in the Supabase SQL editor, then reload.";
-            }
-
-            if (message.includes("public.content")) {
-                return "Supabase table `public.content` is missing. Run `supabase/schema.sql` in the Supabase SQL editor, then reload.";
-            }
-
-            if (message.includes("public.settings")) {
-                return "Supabase table `public.settings` is missing. Run `supabase/schema.sql` in the Supabase SQL editor, then reload.";
-            }
-        }
-
-        return `Could not load admin data: ${message}`;
-    };
+    }, []);
 
     useEffect(() => {
         let isActive = true;
@@ -77,20 +84,27 @@ export default function AdminDashboard({ initialHasAccess = false }: AdminDashbo
                 if (!response.ok) {
                     if (isActive) {
                         setHasAccess(false);
+                        setAdminAccessError(await getResponseErrorMessage(response, "Could not verify admin access."));
                     }
                     return;
                 }
 
-                const data = (await response.json()) as { authenticated?: boolean };
+                const data = (await response.json()) as {
+                    authenticated?: boolean;
+                    configured?: boolean;
+                    error?: string | null;
+                };
 
                 if (isActive) {
                     setHasAccess(Boolean(data.authenticated));
+                    setAdminAccessError(data.authenticated ? "" : data.error ?? "");
                 }
             } catch (error) {
                 console.error("Error checking admin session:", error);
 
                 if (isActive) {
                     setHasAccess(false);
+                    setAdminAccessError("Could not verify admin access.");
                 }
             } finally {
                 if (isActive) {
@@ -111,66 +125,36 @@ export default function AdminDashboard({ initialHasAccess = false }: AdminDashbo
             return;
         }
 
-        let isActive = true;
-        let stopUsersSubscription: (() => void) | null = null;
-
-        const loadAdminData = async () => {
-            try {
-                setAdminDataError("");
-
-                const [nextUsers, nextContent, nextEmail] = await Promise.all([
-                    fetchUsers(),
-                    fetchContent(),
-                    fetchPayPalEmail(),
-                ]);
-
-                if (!isActive) {
-                    return;
-                }
-
-                setUsers(nextUsers);
-                setContent(nextContent);
-                setPaypalEmail(nextEmail);
-                setPaypalDraft(nextEmail);
-            } catch (error) {
-                console.error("Error loading Supabase admin data:", error);
-
-                if (isActive) {
-                    setAdminDataError(getAdminDataErrorMessage(error));
-                }
-            }
-        };
-
         void loadAdminData();
-        stopUsersSubscription = subscribeToUsers((nextUsers) => {
-            if (isActive) {
-                setUsers(nextUsers);
-            }
-        });
-
-        return () => {
-            isActive = false;
-            stopUsersSubscription?.();
-        };
-    }, [hasAccess]);
+    }, [hasAccess, loadAdminData]);
 
     const stats = useMemo(
         () => ({
             totalUsers: users.length,
-            activePlans: users.filter((user) => user.planType !== "guest" && !user.accessLocked).length,
+            unlockedUsers: users.filter((user) => !user.accessLocked).length,
             totalContent: content.length,
         }),
         [content.length, users],
     );
 
     const handleAddContent = async (values: {
-        topicName: string;
         title: string;
         imageUrl: string;
         audioUrl: string;
     }) => {
-        await createContent(values);
-        setContent(await fetchContent());
+        const response = await fetch("/api/admin/content", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(values),
+        });
+
+        if (!response.ok) {
+            throw new Error(await getResponseErrorMessage(response, "Could not save content."));
+        }
+
+        await loadAdminData();
     };
 
     const handleSavePayPalEmail = async () => {
@@ -178,12 +162,23 @@ export default function AdminDashboard({ initialHasAccess = false }: AdminDashbo
         setSettingsMessage("");
 
         try {
-            await savePayPalEmail(paypalDraft);
+            const response = await fetch("/api/admin/settings/paypal", {
+                method: "PUT",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ email: paypalDraft }),
+            });
+
+            if (!response.ok) {
+                throw new Error(await getResponseErrorMessage(response, "Could not update PayPal email."));
+            }
+
             setPaypalEmail(paypalDraft.trim());
             setSettingsMessage("PayPal email updated.");
         } catch (error) {
             console.error("Error updating PayPal email:", error);
-            setSettingsMessage("Could not update PayPal email.");
+            setSettingsMessage(error instanceof Error ? error.message : "Could not update PayPal email.");
         } finally {
             setSavingSettings(false);
         }
@@ -200,31 +195,68 @@ export default function AdminDashboard({ initialHasAccess = false }: AdminDashbo
         setSettingsMessage("");
 
         try {
-            await clearPayPalEmail();
+            const response = await fetch("/api/admin/settings/paypal", {
+                method: "DELETE",
+            });
+
+            if (!response.ok) {
+                throw new Error(await getResponseErrorMessage(response, "Could not delete PayPal email."));
+            }
+
             setPaypalEmail("");
             setPaypalDraft("");
             setSettingsMessage("PayPal email deleted.");
         } catch (error) {
             console.error("Error deleting PayPal email:", error);
-            setSettingsMessage("Could not delete PayPal email.");
+            setSettingsMessage(error instanceof Error ? error.message : "Could not delete PayPal email.");
         } finally {
             setSavingSettings(false);
         }
     };
 
-    const handlePlanChange = async (userId: string, planType: PlanType) => {
-        await updateUserPlan(userId, planType);
-        setUsers(await fetchUsers());
-    };
-
     const handleAccessToggle = async (userId: string, currentValue: boolean) => {
-        await setUserAccessLocked(userId, !currentValue);
-        setUsers(await fetchUsers());
+        setAdminDataError("");
+        const response = await fetch("/api/admin/users", {
+            method: "PATCH",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                action: "access",
+                userId,
+                accessLocked: !currentValue,
+            }),
+        });
+
+        if (!response.ok) {
+            setAdminDataError(await getResponseErrorMessage(response, "Could not update access state."));
+            return;
+        }
+
+        await loadAdminData();
     };
 
     const handleFeatureToggle = async (userId: string, featureKey: FeatureKey, currentValue: boolean) => {
-        await toggleUserFeature(userId, featureKey, !currentValue);
-        setUsers(await fetchUsers());
+        setAdminDataError("");
+        const response = await fetch("/api/admin/users", {
+            method: "PATCH",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                action: "feature",
+                userId,
+                featureKey,
+                enabled: !currentValue,
+            }),
+        });
+
+        if (!response.ok) {
+            setAdminDataError(await getResponseErrorMessage(response, "Could not update feature access."));
+            return;
+        }
+
+        await loadAdminData();
     };
 
     const handleDeleteContent = async (contentId: string) => {
@@ -234,8 +266,17 @@ export default function AdminDashboard({ initialHasAccess = false }: AdminDashbo
             return;
         }
 
-        await deleteContent(contentId);
-        setContent(await fetchContent());
+        setAdminDataError("");
+        const response = await fetch(`/api/admin/content?id=${encodeURIComponent(contentId)}`, {
+            method: "DELETE",
+        });
+
+        if (!response.ok) {
+            setAdminDataError(await getResponseErrorMessage(response, "Could not delete content."));
+            return;
+        }
+
+        await loadAdminData();
     };
 
     const handleAdminLogout = async () => {
@@ -261,7 +302,13 @@ export default function AdminDashboard({ initialHasAccess = false }: AdminDashbo
     if (!hasAccess) {
         return (
             <main className="mx-auto flex min-h-screen w-full max-w-6xl items-center justify-center px-4 py-12 sm:px-6">
-                <AdminLogin onSuccess={() => setHasAccess(true)} />
+                <AdminLogin
+                    initialError={adminAccessError}
+                    onSuccess={() => {
+                        setAdminAccessError("");
+                        setHasAccess(true);
+                    }}
+                />
             </main>
         );
     }
@@ -299,8 +346,8 @@ export default function AdminDashboard({ initialHasAccess = false }: AdminDashbo
                         <p className="mt-2 text-3xl font-semibold text-white">{stats.totalUsers}</p>
                     </div>
                     <div className="rounded-3xl border border-emerald-500/20 bg-emerald-500/10 p-5">
-                        <p className="text-sm text-emerald-200">Paid plans active</p>
-                        <p className="mt-2 text-3xl font-semibold text-white">{stats.activePlans}</p>
+                        <p className="text-sm text-emerald-200">Unlocked users</p>
+                        <p className="mt-2 text-3xl font-semibold text-white">{stats.unlockedUsers}</p>
                     </div>
                     <div className="rounded-3xl border border-sky-500/20 bg-sky-500/10 p-5">
                         <p className="text-sm text-sky-200">Published content</p>
@@ -375,7 +422,6 @@ export default function AdminDashboard({ initialHasAccess = false }: AdminDashbo
                 <UserList
                     onAccessToggle={handleAccessToggle}
                     onFeatureToggle={handleFeatureToggle}
-                    onPlanChange={handlePlanChange}
                     users={users}
                 />
             </div>
@@ -409,9 +455,6 @@ export default function AdminDashboard({ initialHasAccess = false }: AdminDashbo
                                 </div>
                                 <div className="space-y-4 p-5">
                                     <div>
-                                        <p className="text-xs uppercase tracking-[0.3em] text-emerald-300">
-                                            {item.topicName || "Untitled Topic"}
-                                        </p>
                                         <h3 className="text-xl font-semibold text-white">{item.title}</h3>
                                         <p className="mt-2 text-sm text-slate-400">Preview and delete this item.</p>
                                     </div>

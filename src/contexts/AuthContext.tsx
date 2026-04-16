@@ -7,9 +7,9 @@ import {
     ensureUserProfile,
     fetchUserProfile,
     subscribeToUserProfile,
-    type UserProfile,
 } from "@/src/lib/supabaseData";
 import type { PlanType } from "@/src/lib/subscriptionPlans";
+import type { UserProfile } from "@/src/types/platform";
 
 interface AuthContextType {
     user: User | null;
